@@ -34,7 +34,7 @@ try:
 except Exception:  # pragma: no cover
     _pd = None
 
-__all__ = ["ExpressionMatrix", "as_expression_matrix"]
+__all__ = ["ExpressionMatrix", "as_expression_matrix", "table2eset"]
 
 
 @dataclass
@@ -135,3 +135,87 @@ def as_expression_matrix(x) -> ExpressionMatrix:
     genes = _as_str_list(None, "gene", mat.shape[0])
     times = _as_str_list(None, "t", mat.shape[1])
     return ExpressionMatrix(mat, genes, times)
+
+
+def table2eset(filename: str) -> ExpressionMatrix:
+    """Read a tab-delimited expression table -- Mfuzz ``table2eset``.
+
+    File-reader entry point for the package: parses a tab-separated table
+    into an :class:`ExpressionMatrix` (pymfuzz's analog of R's
+    ``ExpressionSet``), faithfully reproducing the layout R's
+    ``table2eset`` expects.
+
+    Expected file layout
+    --------------------
+    * **Row 1** -- the header.  Its first field is ignored (a label for
+      the gene-id column); an *optional* second field whose name contains
+      ``"gene"`` (case-insensitive) marks a second gene-name column.  The
+      remaining fields are the sample names.
+    * **Row 2 (optional)** -- if its first field is ``Time``/``time``/
+      ``TIME`` it supplies the numeric time points for the samples; the
+      data then start at row 3.  Otherwise data start at row 2 and the
+      time points default to ``0, 1, 2, ...``.
+    * **Data rows** -- column 1 is the gene id, the optional gene-name
+      column follows, then the numeric expression values.
+
+    Parameters
+    ----------
+    filename : str
+        Path to the tab-delimited table.
+
+    Returns
+    -------
+    ExpressionMatrix
+        ``genes x timepoints`` matrix; ``gene_names`` are the gene ids
+        and ``time_names`` are the sample names.
+
+    Examples
+    --------
+    >>> import pymfuzz as mf
+    >>> em = mf.table2eset("expression.txt")        # doctest: +SKIP
+    >>> em.shape                                    # doctest: +SKIP
+    (3000, 17)
+    """
+    with open(filename, "r") as fh:
+        lines = fh.read().splitlines()
+    if not lines:
+        raise ValueError(f"{filename!r} is empty.")
+
+    header = lines[0].split("\t")
+    # optional gene-name column: second header field contains "gene"
+    gene_names_ok = (
+        1 if len(header) > 1 and "gene" in header[1].lower() else 0
+    )
+    # R: sample.names[(2 + gene.names.ok):length()] -- R indices are
+    # 1-based, so this drops the first (1 + gene_names_ok) header fields
+    # (the gene-id column and, when present, the gene-name column).
+    sample_names = [str(s) for s in header[1 + gene_names_ok:]]
+
+    # optional Time row
+    second = lines[1].split("\t") if len(lines) > 1 else []
+    has_time = len(second) > 0 and second[0] in ("Time", "time", "TIME")
+    if has_time:
+        data_lines = lines[2:]
+    else:
+        data_lines = lines[1:]
+
+    gene_ids: List[str] = []
+    rows: List[List[float]] = []
+    for ln in data_lines:
+        if ln == "":
+            continue
+        parts = ln.split("\t")
+        gene_ids.append(str(parts[0]))
+        rows.append([float(v) for v in parts[gene_names_ok + 1:]])
+
+    mat = np.asarray(rows, dtype=np.float64)
+    if mat.ndim != 2 or mat.shape[0] == 0:
+        raise ValueError(f"No data rows parsed from {filename!r}.")
+    if not sample_names:
+        sample_names = _as_str_list(None, "t", mat.shape[1])
+    if len(sample_names) != mat.shape[1]:
+        raise ValueError(
+            f"Header lists {len(sample_names)} samples but data has "
+            f"{mat.shape[1]} value columns."
+        )
+    return ExpressionMatrix(mat, gene_ids, sample_names)

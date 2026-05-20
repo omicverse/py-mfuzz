@@ -2,9 +2,9 @@
 
 These mirror, line for line, the corresponding R functions in the Mfuzz
 package (``standardise``, ``standardise2``, ``filter.NA``, ``fill.NA``,
-``filter.std``).  All use R's *sample* standard deviation (``ddof=1``,
-denominator ``n - 1``) so that :func:`standardise` and :func:`standardise2`
-are bit-exact against R.
+``filter.std``, ``randomise``).  All use R's *sample* standard deviation
+(``ddof=1``, denominator ``n - 1``) so that :func:`standardise` and
+:func:`standardise2` are bit-exact against R.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ __all__ = [
     "filter_NA",
     "fill_NA",
     "filter_std",
+    "randomise",
 ]
 
 
@@ -241,3 +242,49 @@ def filter_std(
         ax.set_ylabel("Sd")
         return filtered, fig
     return filtered
+
+
+def randomise(eset, random_state: Optional[int] = None) -> ExpressionMatrix:
+    """Randomise a time-course by permuting within each gene -- Mfuzz ``randomise``.
+
+    Direct port of R's ``randomise(eset)``.  For every gene (row) the
+    expression values are independently shuffled across the time points::
+
+        for each gene i:
+            dataR[i, ] <- data[i, sample(ncol)]
+
+    The per-gene value *set* is preserved exactly -- only the temporal
+    ordering is destroyed.  Clustering the randomised data and comparing
+    with the original (e.g. via :func:`pymfuzz.Dmin` or
+    :func:`pymfuzz.overlap`) tells you whether the cluster structure seen
+    in the real data exceeds what an arbitrary permutation produces.
+
+    Parameters
+    ----------
+    x : array-like | DataFrame | AnnData | ExpressionMatrix
+        ``genes x timepoints`` expression input.
+    random_state : int, optional
+        Seed for the per-gene permutation RNG (R relies on the global
+        seed; pass an explicit seed here for reproducibility).
+
+    Returns
+    -------
+    ExpressionMatrix
+        A new matrix; each row is a permutation of the corresponding
+        input row, with gene and timepoint labels preserved.
+
+    Examples
+    --------
+    >>> import numpy as np, pymfuzz as mf
+    >>> x = np.arange(12, dtype=float).reshape(3, 4)
+    >>> r = mf.randomise(x, random_state=0)
+    >>> all(set(r.values[i]) == set(x[i]) for i in range(3))
+    True
+    """
+    em = as_expression_matrix(eset).copy()
+    data = em.values
+    rng = np.random.default_rng(random_state)
+    ncol = data.shape[1]
+    for i in range(data.shape[0]):
+        data[i, :] = data[i, rng.permutation(ncol)]
+    return em

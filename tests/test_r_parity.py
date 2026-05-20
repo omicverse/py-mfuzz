@@ -18,6 +18,12 @@ exact same input.  We compare:
   optimum.
 * ``Dmin``        -- the minimum-centroid-distance curve correlates
   well with R's.
+* ``membership``  -- bit-exact (rel-diff < 1e-9); it is a deterministic
+  formula given the same centroids and fuzzifier ``m``.
+* ``top_count``   -- exact integer match; it is a pure function of the
+  membership matrix (fed R's own membership matrix).
+* ``randomise``   -- a per-gene permutation, so the per-gene value
+  *multiset* must be preserved (set-equality per gene, not order).
 
 Tests skip gracefully when the CMAP R env or Mfuzz is unavailable.
 """
@@ -206,3 +212,68 @@ def test_dmin_curve_correlation(r_reference):
     assert corr > 0.95, f"Dmin curve Pearson r {corr:.4f} <= 0.95"
     # both curves should be monotonically decreasing in cluster count
     assert py_dmin[0] > py_dmin[-1]
+
+
+# ----------------------------------------------------------------------
+# membership -- deterministic given centres + m: assert bit-exact
+# ----------------------------------------------------------------------
+def test_membership_bit_exact(r_reference):
+    r_std = _read(r_reference / "standardised.tsv")
+    r_cen = _read(r_reference / "centers.tsv").to_numpy()
+    m_r = float(pd.read_csv(r_reference / "mestimate.tsv", sep="\t")["m"][0])
+    r_mem = _read(r_reference / "membership.proj.tsv").to_numpy()
+    py_mem = mf.membership(r_std, r_cen, m=m_r)
+    assert py_mem.shape == r_mem.shape
+    max_abs = np.nanmax(np.abs(py_mem - r_mem))
+    assert max_abs < 1e-9, f"membership max abs diff {max_abs:.2e}"
+    nz = np.abs(r_mem) > 1e-6
+    rel = np.nanmax(np.abs(py_mem[nz] - r_mem[nz]) / np.abs(r_mem[nz]))
+    assert rel < 1e-9, f"membership rel-diff {rel:.2e} >= 1e-9"
+    # every row sums to 1
+    assert np.allclose(py_mem.sum(axis=1), 1.0, atol=1e-9)
+
+
+# ----------------------------------------------------------------------
+# top_count -- must match R's per-gene counts exactly
+# ----------------------------------------------------------------------
+def test_top_count_matches_r(r_reference, py_clustering):
+    # rebuild the membership-matched cluster permutation so the Python
+    # clustering's centroid ordering lines up with R's, then re-derive
+    # top.count from R's own membership matrix to compare like-for-like.
+    r_mem = _read(r_reference / "membership.proj.tsv")
+    r_tc = pd.read_csv(r_reference / "topcount.tsv", sep="\t")
+
+    # top.count is a pure function of the membership matrix; feed R's
+    # membership matrix through the Python implementation and assert the
+    # per-gene counts are identical.
+    class _Cl:
+        membership = r_mem.to_numpy()
+
+    py_tc = mf.top_count(_Cl())
+    assert py_tc.shape[0] == len(r_tc)
+    assert np.array_equal(py_tc, r_tc["COUNT"].to_numpy())
+
+
+# ----------------------------------------------------------------------
+# randomise -- a per-gene permutation: assert value MULTISET preserved
+# ----------------------------------------------------------------------
+def test_randomise_preserves_per_gene_multiset(r_reference):
+    r_std = _read(r_reference / "standardised.tsv")
+    r_rand = _read(r_reference / "randomised.tsv")
+    py_rand = mf.randomise(r_std, random_state=0)
+    # shape preserved
+    assert py_rand.shape == r_std.to_numpy().shape
+    # R's randomise: each row of the output is a permutation of the input
+    src = r_std.to_numpy()
+    out_r = r_rand.to_numpy()
+    out_py = py_rand.values
+    for i in range(src.shape[0]):
+        a = np.sort(src[i, :])
+        # R output: per-gene value multiset equals the input multiset
+        assert np.allclose(a, np.sort(out_r[i, :]), atol=1e-9), (
+            f"R randomise changed gene {i} value set"
+        )
+        # Python output: same invariant holds
+        assert np.allclose(a, np.sort(out_py[i, :]), atol=1e-9), (
+            f"Python randomise changed gene {i} value set"
+        )

@@ -18,7 +18,13 @@ from .cluster import FClust
 from .dataset import as_expression_matrix
 from .kmeans import KMeansResult
 
-__all__ = ["mfuzz_plot", "mfuzz_plot2", "kmeans2_plot", "overlap_plot"]
+__all__ = [
+    "mfuzz_plot",
+    "mfuzz_plot2",
+    "kmeans2_plot",
+    "overlap_plot",
+    "mfuzz_colorbar",
+]
 
 
 # Mfuzz's default colour ramps (taken verbatim from the R source).
@@ -377,5 +383,96 @@ def overlap_plot(
         )
     ax.set_xlabel("PC1")
     ax.set_ylabel("PC2")
+    fig.tight_layout()
+    return fig
+
+
+def mfuzz_colorbar(
+    col: Optional[Sequence[str]] = None,
+    horizontal: bool = False,
+    ax=None,
+    figsize: Tuple[float, float] = (1.4, 4.0),
+    **kwargs,
+):
+    """Membership colour-scale bar -- Mfuzz ``mfuzzColorBar``.
+
+    Draws the 0..1 membership colour key that accompanies the
+    :func:`mfuzz_plot` / :func:`mfuzz_plot2` figures.  Faithful port of
+    R's ``mfuzzColorBar`` (which delegates to ``marray::maColorBar``):
+    the bar shows ``seq(0, 1, 0.01)`` filled with the colour ramp and is
+    annotated with ``k = 11`` evenly spaced ticks.
+
+    Parameters
+    ----------
+    col : sequence of str, optional
+        Colour ramp.  Defaults to Mfuzz's orange->magenta palette; pass
+        the string ``"fancy"`` for the wide RGB sweep used by
+        :func:`mfuzz_plot2`.
+    horizontal : bool, default False
+        If True draw the bar horizontally; vertical otherwise (the R
+        default).
+    ax : matplotlib.axes.Axes, optional
+        Axes to draw on; a new figure/axes is created when omitted.
+    figsize : (float, float), default (1.4, 4.0)
+        Figure size when ``ax`` is not supplied.
+    **kwargs
+        Forwarded to :meth:`~matplotlib.axes.Axes.imshow`.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure containing the colour bar.
+
+    Examples
+    --------
+    >>> import pymfuzz as mf
+    >>> fig = mf.mfuzz_colorbar()
+    >>> fig is not None
+    True
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+
+    if col is None:
+        colors = list(_MFUZZ_COLO)
+    elif isinstance(col, str) and col == "fancy":
+        b = list(range(255, -1, -1)) + [0] * 256 + [0] * 106
+        g = list(range(256)) + list(range(255, -1, -1)) + [0] * 106
+        r = list(range(256)) + [255] * 256 + list(range(255, 149, -1))
+        colors = [
+            (rr / 255.0, gg / 255.0, bb / 255.0)
+            for rr, gg, bb in zip(r, g, b)
+        ]
+    else:
+        colors = list(col)
+
+    cmap = LinearSegmentedColormap.from_list("mfuzz_bar", colors)
+    # R: maColorBar(seq(0, 1, 0.01), ..., k = 11)
+    scale = np.arange(0.0, 1.0001, 0.01)
+    ticks = np.linspace(0.0, 1.0, 11)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+
+    grad = scale.reshape(1, -1) if horizontal else scale.reshape(-1, 1)
+    if horizontal:
+        ax.imshow(
+            grad, aspect="auto", cmap=cmap, origin="lower",
+            extent=(0.0, 1.0, 0.0, 1.0), **kwargs,
+        )
+        ax.set_yticks([])
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{t:g}" for t in ticks])
+    else:
+        ax.imshow(
+            grad, aspect="auto", cmap=cmap, origin="lower",
+            extent=(0.0, 1.0, 0.0, 1.0), **kwargs,
+        )
+        ax.set_xticks([])
+        ax.yaxis.tick_right()
+        ax.set_yticks(ticks)
+        ax.set_yticklabels([f"{t:g}" for t in ticks])
     fig.tight_layout()
     return fig

@@ -32,6 +32,11 @@ Preprocessing
 * :func:`filter_NA`    -- drop genes with too many missing values.
 * :func:`fill_NA`      -- impute missing values (mean / median / knn).
 * :func:`filter_std`   -- drop low-variability genes.
+* :func:`randomise`    -- permute values within each gene (null model).
+
+I/O
+---
+* :func:`table2eset`   -- read a tab-delimited expression table file.
 
 Fuzzifier / clustering
 ----------------------
@@ -46,6 +51,8 @@ Post-processing / diagnostics
 * :func:`cselection` -- empty-cluster frequency vs cluster count.
 * :func:`partcoef`   -- partition coefficient over a ``(c, m)`` grid.
 * :func:`overlap`    -- cluster-to-cluster membership overlap.
+* :func:`membership` -- project genes onto pre-computed centroids.
+* :func:`top_count`  -- per-gene count of clusters the gene tops.
 
 Hard clustering
 ---------------
@@ -57,6 +64,7 @@ Plotting
   temporal-profile grids.
 * :func:`kmeans2_plot` -- hard-cluster profile grid.
 * :func:`overlap_plot` -- PCA overlap map of cluster centres.
+* :func:`mfuzz_colorbar` -- membership colour-scale bar.
 
 Datasets
 --------
@@ -84,24 +92,33 @@ from .analysis import (
     PartcoefResult,
     acore,
     cselection,
+    membership,
     mestimate,
     overlap,
     partcoef,
+    top_count,
 )
 from .cluster import FClust, cmeans, mfuzz
-from .dataset import ExpressionMatrix, as_expression_matrix
+from .dataset import ExpressionMatrix, as_expression_matrix, table2eset
 from .datasets import load_yeast, make_synthetic_timecourse
 from .kmeans import KMeansResult, kmeans2
-from .plotting import kmeans2_plot, mfuzz_plot, mfuzz_plot2, overlap_plot
+from .plotting import (
+    kmeans2_plot,
+    mfuzz_colorbar,
+    mfuzz_plot,
+    mfuzz_plot2,
+    overlap_plot,
+)
 from .preprocess import (
     fill_NA,
     filter_NA,
     filter_std,
+    randomise,
     standardise,
     standardise2,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     # data structures
@@ -111,12 +128,15 @@ __all__ = [
     "KMeansResult",
     "AcoreCluster",
     "PartcoefResult",
+    # I/O
+    "table2eset",
     # preprocessing
     "standardise",
     "standardise2",
     "filter_NA",
     "fill_NA",
     "filter_std",
+    "randomise",
     # fuzzifier / clustering
     "mestimate",
     "mfuzz",
@@ -127,6 +147,8 @@ __all__ = [
     "cselection",
     "partcoef",
     "overlap",
+    "membership",
+    "top_count",
     # hard clustering
     "kmeans2",
     # plotting
@@ -134,6 +156,7 @@ __all__ = [
     "mfuzz_plot2",
     "kmeans2_plot",
     "overlap_plot",
+    "mfuzz_colorbar",
     # datasets
     "load_yeast",
     "make_synthetic_timecourse",

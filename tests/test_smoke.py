@@ -289,6 +289,118 @@ def test_overlap_matrix(synthetic):
 
 
 # ----------------------------------------------------------------------
+# membership
+# ----------------------------------------------------------------------
+def test_membership_projects_onto_centroids(synthetic):
+    data = mf.standardise(synthetic)
+    cl = mf.mfuzz(data, c=6, m=1.5, random_state=0)
+    u = mf.membership(data, cl.centers, m=1.5)
+    assert u.shape == (synthetic.n_genes, 6)
+    # every row sums to 1, values in [0, 1]
+    assert np.allclose(u.sum(axis=1), 1.0, atol=1e-9)
+    assert u.min() >= -1e-12 and u.max() <= 1.0 + 1e-9
+
+
+def test_membership_reproduces_own_clustering(synthetic):
+    # projecting the clustered data onto its own centres at the same m
+    # should reproduce the mfuzz membership matrix.
+    data = mf.standardise(synthetic)
+    cl = mf.mfuzz(data, c=5, m=1.6, random_state=2)
+    u = mf.membership(data, cl.centers, m=1.6)
+    assert np.allclose(u, cl.membership, atol=1e-8)
+
+
+def test_membership_accepts_single_vector(synthetic):
+    data = mf.standardise(synthetic)
+    cl = mf.mfuzz(data, c=4, m=1.5, random_state=0)
+    u = mf.membership(data.values[0], cl.centers, m=1.5)
+    assert u.shape == (1, 4)
+
+
+# ----------------------------------------------------------------------
+# top_count
+# ----------------------------------------------------------------------
+def test_top_count_per_gene(synthetic):
+    data = mf.standardise(synthetic)
+    cl = mf.mfuzz(data, c=6, m=1.5, random_state=0)
+    tc = mf.top_count(cl)
+    # one count per gene
+    assert tc.shape == (synthetic.n_genes,)
+    # non-negative integers
+    assert tc.dtype.kind in "iu"
+    assert np.all(tc >= 0)
+    # with no ties, each cluster has exactly one column-max gene, so the
+    # counts sum to the number of clusters.
+    assert tc.sum() >= cl.n_clusters
+
+
+# ----------------------------------------------------------------------
+# randomise
+# ----------------------------------------------------------------------
+def test_randomise_preserves_per_gene_values():
+    x = np.arange(24, dtype=float).reshape(4, 6)
+    r = mf.randomise(x, random_state=0)
+    assert r.shape == (4, 6)
+    for i in range(4):
+        # the per-gene value multiset is unchanged -- only the order
+        assert set(r.values[i]) == set(x[i])
+    # at least one gene is actually reordered
+    assert not np.array_equal(r.values, x)
+
+
+def test_randomise_reproducible_with_seed():
+    x = np.random.RandomState(0).rand(20, 8)
+    a = mf.randomise(x, random_state=7)
+    b = mf.randomise(x, random_state=7)
+    assert np.array_equal(a.values, b.values)
+
+
+# ----------------------------------------------------------------------
+# table2eset
+# ----------------------------------------------------------------------
+def test_table2eset_plain(tmp_path):
+    p = tmp_path / "expr.txt"
+    p.write_text(
+        "ID\tt0\tt1\tt2\n"
+        "g1\t1.0\t2.0\t3.0\n"
+        "g2\t4.0\t5.0\t6.0\n"
+    )
+    em = mf.table2eset(str(p))
+    assert em.shape == (2, 3)
+    assert em.gene_names == ["g1", "g2"]
+    assert em.time_names == ["t0", "t1", "t2"]
+    assert np.allclose(em.values[1], [4.0, 5.0, 6.0])
+
+
+def test_table2eset_with_gene_name_and_time_rows(tmp_path):
+    p = tmp_path / "expr2.txt"
+    p.write_text(
+        "ID\tGeneName\ts0\ts1\ts2\n"
+        "Time\t\t0\t10\t20\n"
+        "g1\tAlpha\t1.0\t2.0\t3.0\n"
+        "g2\tBeta\t4.0\t5.0\t6.0\n"
+    )
+    em = mf.table2eset(str(p))
+    assert em.shape == (2, 3)
+    assert em.gene_names == ["g1", "g2"]
+    assert em.time_names == ["s0", "s1", "s2"]
+    assert np.allclose(em.values[0], [1.0, 2.0, 3.0])
+
+
+# ----------------------------------------------------------------------
+# mfuzz_colorbar
+# ----------------------------------------------------------------------
+def test_mfuzz_colorbar_default():
+    fig = mf.mfuzz_colorbar()
+    assert isinstance(fig, Figure)
+
+
+def test_mfuzz_colorbar_horizontal_and_fancy():
+    fig = mf.mfuzz_colorbar(col="fancy", horizontal=True)
+    assert isinstance(fig, Figure)
+
+
+# ----------------------------------------------------------------------
 # kmeans2
 # ----------------------------------------------------------------------
 def test_kmeans2(synthetic):

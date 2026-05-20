@@ -1,7 +1,8 @@
 """Diagnostic and post-processing routines -- Mfuzz analysis functions.
 
 Faithful ports of ``mestimate``, ``acore``, ``Dmin``, ``cselection``,
-``partcoef`` and ``overlap`` from the Mfuzz R package.
+``partcoef``, ``overlap``, ``membership`` and ``top.count`` from the
+Mfuzz R package.
 """
 from __future__ import annotations
 
@@ -22,6 +23,8 @@ __all__ = [
     "partcoef",
     "PartcoefResult",
     "overlap",
+    "membership",
+    "top_count",
 ]
 
 
@@ -366,3 +369,126 @@ def overlap(cl: FClust) -> np.ndarray:
     O = U.T @ U  # O[i, j] = sum_g u_gi u_gj
     O = O / O.sum(axis=0, keepdims=True)
     return O
+
+
+# ----------------------------------------------------------------------
+# membership -- project genes onto pre-computed cluster centroids
+# ----------------------------------------------------------------------
+def membership(x, clusters, m: float) -> np.ndarray:
+    """Fuzzy membership of genes against existing centroids -- Mfuzz ``membership``.
+
+    Direct port of R's ``membership(x, clusters, m)``.  Given a set of
+    pre-computed cluster centres ``clusters`` it computes, for every gene
+    in ``x``, the fuzzy c-means membership in each cluster::
+
+        u_ij = 1 / sum_k ( d(x_i, c_j) / d(x_i, c_k) )^(2/(m-1))
+
+    and then row-normalises so each gene's memberships sum to 1.  This is
+    the standard way to *project* new (or all) genes onto a clustering
+    obtained elsewhere -- e.g. assign held-out genes to existing clusters,
+    or score every gene against the centres of a representative subset.
+
+    Parameters
+    ----------
+    x : array-like | DataFrame | AnnData | ExpressionMatrix
+        ``genes x timepoints`` expression input (a single gene may be
+        passed as a 1-D vector, as in R).
+    clusters : array-like
+        ``(c, timepoints)`` matrix of cluster centroids -- e.g.
+        ``cl.centers`` from a :class:`~pymfuzz.FClust`.
+    m : float
+        Fuzzifier (``m > 1``); use the same value as the clustering that
+        produced ``clusters``.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(genes, c)`` membership matrix; every row sums to 1.
+
+    Examples
+    --------
+    >>> import pymfuzz as mf
+    >>> data = mf.standardise(mf.make_synthetic_timecourse(random_state=0))
+    >>> cl = mf.mfuzz(data, c=6, m=1.5, random_state=0)
+    >>> u = mf.membership(data, cl.centers, m=1.5)
+    >>> u.shape
+    (240, 6)
+    """
+    arr = np.asarray(x.values if hasattr(x, "values") else x, dtype=np.float64)
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    centres = np.asarray(clusters, dtype=np.float64)
+    if centres.ndim != 2:
+        raise ValueError("clusters must be a 2-D (c x timepoints) matrix.")
+    if arr.shape[1] != centres.shape[1]:
+        raise ValueError(
+            "'x' and 'clusters' must have the same number of columns."
+        )
+    n_genes = arr.shape[0]
+    c = centres.shape[0]
+    exponent = 2.0 / (m - 1.0)
+
+    # d[i, j] = Euclidean distance from gene i to centroid j
+    diff = arr[:, None, :] - centres[None, :, :]
+    d = np.sqrt(np.sum(diff * diff, axis=2))  # (n_genes, c)
+
+    u = np.empty((n_genes, c), dtype=np.float64)
+    for i in range(n_genes):
+        u_i = np.empty(c, dtype=np.float64)
+        for j in range(c):
+            tmp = np.sum((d[i, j] / d[i, :]) ** exponent)
+            u_i[j] = 1.0 / tmp
+        u[i, :] = u_i / np.sum(u_i)
+    return u
+
+
+# ----------------------------------------------------------------------
+# top.count -- per-cluster count of "winning" genes (overlap analysis)
+# ----------------------------------------------------------------------
+def top_count(cl: FClust) -> np.ndarray:
+    """Per-gene count of clusters the gene "tops" -- Mfuzz ``top.count``.
+
+    Direct port of R's ``top.count(cl)``.  Iterating over each cluster
+    (column of the ``genes x clusters`` membership matrix), the gene(s)
+    that attain the *column maximum* membership for that cluster are
+    found and their per-gene counter incremented::
+
+        for each cluster j:
+            winners <- which(max(U[, j]) <= U[, j])
+            count[winners] <- count[winners] + 1
+
+    The returned vector therefore has one entry **per gene**: how many
+    clusters that gene is the single best-matching ("top") gene for.  It
+    is the counting primitive underlying the cluster-overlap analysis.
+
+    Parameters
+    ----------
+    cl : FClust
+        A clustering result from :func:`pymfuzz.mfuzz` (its
+        ``membership`` matrix is the ``cl[[4]]`` slot R reads).
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(genes,)`` integer counts, one per gene.  When several genes
+        tie for a cluster's maximum every tied gene is counted (matching
+        R's ``max(x) <= x`` test), so the counts may sum to more than the
+        number of clusters.
+
+    Examples
+    --------
+    >>> import pymfuzz as mf
+    >>> data = mf.standardise(mf.make_synthetic_timecourse(random_state=0))
+    >>> cl = mf.mfuzz(data, c=6, m=1.5, random_state=0)
+    >>> tc = mf.top_count(cl)
+    >>> tc.shape[0] == cl.membership.shape[0]
+    True
+    """
+    memship = cl.membership
+    n_genes, c = memship.shape
+    count = np.zeros(n_genes, dtype=int)
+    for j in range(c):
+        col = memship[:, j]
+        winners = np.max(col) <= col
+        count[winners] += 1
+    return count

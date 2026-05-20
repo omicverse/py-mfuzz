@@ -13,6 +13,9 @@
 #   membership.tsv     mfuzz() membership matrix (genes x c)
 #   cluster.tsv        mfuzz() hard cluster assignment (genes)
 #   dmin.tsv           Dmin() minimum-centroid-distance curve
+#   membership.proj.tsv  membership() of all genes vs cl$centers
+#   topcount.tsv       top.count() per-gene counts for the clustering
+#   randomised.tsv     randomise() of the standardised matrix
 #   info.tsv           dataset / parameter metadata
 
 suppressPackageStartupMessages({
@@ -76,6 +79,25 @@ dmin <- Dmin(yeast.s, m = m, crange = seq(4, 24, 4),
 write.table(data.frame(c = seq(4, 24, 4), dmin = dmin),
             file.path(out_dir, "dmin.tsv"),
             sep = "\t", quote = FALSE, row.names = FALSE)
+
+# --- membership: project all genes onto cl$centers ------------------
+# Deterministic given the centres + m -- assert bit-exact in Python.
+mem.proj <- membership(exprs(yeast.s), cl$centers, m = m)
+write.table(mem.proj, file.path(out_dir, "membership.proj.tsv"),
+            sep = "\t", quote = FALSE, col.names = NA)
+
+# --- top.count: per-gene count for the clustering -------------------
+tc <- top.count(cl)
+write.table(data.frame(NAME = names(cl$cluster),
+                       COUNT = as.integer(tc)),
+            file.path(out_dir, "topcount.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+# --- randomise: permute values within each gene ---------------------
+set.seed(123)
+yeast.rand <- randomise(yeast.s)
+write.table(exprs(yeast.rand), file.path(out_dir, "randomised.tsv"),
+            sep = "\t", quote = FALSE, col.names = NA)
 
 # --- metadata -------------------------------------------------------
 write.table(
