@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pymfuzz"
+version = "0.1.0"
+description = "Pure-Python port of Bioconductor Mfuzz — soft clustering of time-series gene-expression data by fuzzy c-means."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Zehua Zeng", email = "starlitnightly@163.com" },
+]
+keywords = [
+    "Mfuzz", "fuzzy-c-means", "soft-clustering", "time-series",
+    "gene-expression", "transcriptomics", "cluster-analysis",
+    "cmeans", "temporal-profiles", "bioinformatics",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+
+dependencies = [
+    "numpy>=1.23",
+    "scipy>=1.10",
+    "pandas>=1.5",
+    "anndata>=0.8",
+    "matplotlib>=3.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "pytest-cov", "ruff", "jupyter", "nbconvert"]
+
+[project.urls]
+Homepage = "https://github.com/omicverse/py-mfuzz"
+Repository = "https://github.com/omicverse/py-mfuzz"
+Issues = "https://github.com/omicverse/py-mfuzz/issues"
+"Upstream Bioc package" = "https://bioconductor.org/packages/release/bioc/html/Mfuzz.html"
+"Upstream (omicverse)" = "https://github.com/Starlitnightly/omicverse"
+
+[tool.setuptools.packages.find]
+include = ["pymfuzz*"]
+exclude = ["tests*", "examples*", "mfuzz-ref*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore::RuntimeWarning",
+]
