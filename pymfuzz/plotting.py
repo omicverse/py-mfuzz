@@ -112,8 +112,19 @@ def _draw_clusters(
         ax.set_xlabel(xlab)
         ax.set_ylabel(ylab)
         if time_labels is not None:
-            ax.set_xticks(xs)
-            ax.set_xticklabels([str(t) for t in time_labels])
+            labels = [str(t) for t in time_labels]
+            n = len(xs)
+            # thin the ticks when crowded so labels do not overlap, and
+            # rotate them — narrow faceted panels cannot fit many labels
+            step = max(1, int(np.ceil(n / 8)))
+            show = list(range(0, n, step))
+            if show and show[-1] != n - 1:
+                show.append(n - 1)
+            ax.set_xticks([xs[i] for i in show])
+            ax.set_xticklabels([labels[i] for i in show],
+                               rotation=45, ha="right", fontsize=8)
+        else:
+            ax.tick_params(axis="x", labelsize=8)
 
         # draw lines bucketed by membership colour band (as Mfuzz does)
         if tmp.shape[0] > 0:
